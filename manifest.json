@@ -1,0 +1,17 @@
+{
+  "name": "BackTab",
+  "description": "Simple extension to move back to the previously active tab.",
+  "version": "0.1",
+  "manifest_version": 3,
+  "background": {
+    "service_worker": "worker.js"
+  },
+  "commands": {
+    "backtab": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Down"
+      },
+      "description": "Move back to the previously active tab."
+    }
+  }
+}
