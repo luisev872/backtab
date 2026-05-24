@@ -3,27 +3,55 @@ class TabNode {
     this.tabId = tabId;
     this.prev = null;
     this.next = null;
+    this.open = true;
   }
 }
 
 class TabHistoryList {
   constructor() {
     this.head = null;
-    this.tail = null;
     this.size = 0;
+    this.map = new Map(); // tabId -> TabNode
   }
 
-  addToFront(tabId) {
-    const node = new TabNode(tabId);
+  visitTab = (tabId) => {
+    const existingNode = this.map.get(tabId);
+    if(existingNode !== undefined) {
+      this.remove(existingNode);
+    }
 
+    const node = new TabNode(tabId);
+    this.map.set(tabId, node);
+    this.addToFront(node);
+  }
+
+  getPreviousTabId = () => {
+    const current = this.head?.prev;
+    while (current !== null && !current.open) {
+      current = current.prev;
+    }
+    return current?.tabId;
+  }
+
+  addToFront = (node) => {
     if (this.head === null) {
-      this.head = this.tail = node;
+      this.head = node;
     } else {
-      node.prev = this.head;
       this.head.next = node;
+      node.prev = this.head;
       this.head = node;
     }
     this.size++;
+  }
+
+  remove = (node) => {
+    if (node === this.head) {
+      this.head = this.head.prev;
+    } else {
+      if (node.prev) node.prev.next = node.next;
+      node.next.prev = node.prev;
+    }
+    this.size--;
   }
 }
 
@@ -34,41 +62,38 @@ class TabManager {
   }
 
   setupListeners() {
-    chrome.commands.onCommand.addListener((command) => {
+    chrome.commands.onCommand.addListener((command, tab) => {
       if (command === "backtab") {
-        this.getPreviousTab().then((prevTabId) => {
-          if (prevTabId) {
-            chrome.tabs.update(prevTabId, { active: true });
-          }
-        });
+        const prevTabId = this.getPreviousTabWithId(tab.windowId)
+        if (prevTabId) {
+          chrome.tabs.update(prevTabId, { active: true });
+        }
       }
     });
 
     chrome.tabs.onActivated.addListener((activeInfo) => {
       this.handleTabActivated(activeInfo.tabId, activeInfo.windowId);
     });
+
+    chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
+      const list = this.windowLists.get(removeInfo.windowId);
+      if (list !== undefined) {
+        const node = list.map.get(tabId);
+        if (node) node.open = false;
+      }
+    });
   }
 
   async handleTabActivated(tabId, windowId) {
-    console.log(`Handling tab activated: ${tabId}, Window: ${windowId}`);
     if (!this.windowLists.has(windowId)) {
       this.windowLists.set(windowId, new TabHistoryList());
     }
 
-    this.windowLists.get(windowId).addToFront(tabId);
+    this.windowLists.get(windowId).visitTab(tabId);
   }
 
   getPreviousTabWithId(windowId) {
-    if (this.windowLists.has(windowId)) {
-      const prevNode = this.windowLists.get(windowId).head.prev;
-      return prevNode ? prevNode.tabId : null;
-    }
-    return null;
-  }
-
-  async getPreviousTab() {
-    let windowId = (await chrome.windows.getCurrent()).id;
-    return this.getPreviousTabWithId(windowId);
+    return this.windowLists.get(windowId)?.getPreviousTabId();
   }
 }
 
